@@ -1,14 +1,36 @@
 #include "ofxMarchingCubes.h"
 
-ofxMarchingCubes::ofxMarchingCubes(int dss, float tv, std::function<float (float, float, float)> smpl)
-: dataSetSize(dss)
-, stepSize(1.0/dataSetSize)
+/** Lists the positions, relative to vertex_0, of each of the 8 vertices of a cube.
+ */
+static const float vertexOffset[8][3] = {
+    {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {1.0, 1.0, 0.0}, {0.0, 1.0, 0.0},
+    {0.0, 0.0, 1.0}, {1.0, 0.0, 1.0}, {1.0, 1.0, 1.0}, {0.0, 1.0, 1.0}
+};
+
+/** Lists the index of the endpoint vertices for each of the 12 edges of the cube.
+ */
+static const int edgeConnection[12][2] = {
+    {0,1}, {1,2}, {2,3}, {3,0},
+    {4,5}, {5,6}, {6,7}, {7,4},
+    {0,4}, {1,5}, {2,6}, {3,7}
+};
+
+/** Lists the direction vector (vertex_1 - vertex_0) for each edge in the cube.
+ */
+static const float edgeDirection[12][3] = {
+    {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {-1.0, 0.0, 0.0}, {0.0, -1.0, 0.0},
+    {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {-1.0, 0.0, 0.0}, {0.0, -1.0, 0.0},
+    {0.0, 0.0, 1.0}, {0.0, 0.0, 1.0}, { 0.0, 0.0, 1.0}, {0.0,  0.0, 1.0}
+};
+
+ofxMarchingCubes::ofxMarchingCubes(int gs, float tv, std::function<float (float, float, float)> smpl)
+: gridSize(gs)
+, stepSize(1.0/gridSize)
 , targetValue(tv)
 , sample(smpl) {
 }
 
-// getOffset finds the approximate point of intersection of the surface between two points with the values a and b.
-float ofxMarchingCubes::getOffset(float a, float b, float desired) {
+float ofxMarchingCubes::getOffset(float a, float b, float desired) const {
     const double delta = b - a;
     if (delta == 0.0) {
         return 0.5;
@@ -16,40 +38,14 @@ float ofxMarchingCubes::getOffset(float a, float b, float desired) {
     return (desired - a) / delta;
 }
 
-// getNormal() finds the gradient of the scalar field at a point
-// This gradient can be used as a very accurate vertex normal for lighting calculations
-void ofxMarchingCubes::getNormal(ofVec3f &normal, float x, float y, float z) {
+void ofxMarchingCubes::getNormal(ofVec3f &normal, float x, float y, float z) const {
     normal.x = sample(x-0.01, y, z) - sample(x+0.01, y, z);
     normal.y = sample(x, y-0.01, z) - sample(x, y+0.01, z);
     normal.z = sample(x, y, z-0.01) - sample(x, y, z+0.01);
     normal.normalize();
 }
 
-// These tables are used so that everything can be done in little loops that you can look at all at once
-// rather than in pages and pages of unrolled code.
-
-// vertexOffset lists the positions, relative to vertex0, of each of the 8 vertices of a cube
-static const float vertexOffset[8][3] = {
-    {0.0, 0.0, 0.0}, {1.0, 0.0, 0.0}, {1.0, 1.0, 0.0}, {0.0, 1.0, 0.0},
-    {0.0, 0.0, 1.0}, {1.0, 0.0, 1.0}, {1.0, 1.0, 1.0}, {0.0, 1.0, 1.0}
-};
-
-// edgeConnection lists the index of the endpoint vertices for each of the 12 edges of the cube
-static const int edgeConnection[12][2] = {
-    {0,1}, {1,2}, {2,3}, {3,0},
-    {4,5}, {5,6}, {6,7}, {7,4},
-    {0,4}, {1,5}, {2,6}, {3,7}
-};
-
-// edgeDirection lists the direction vector (vertex1-vertex0) for each edge in the cube
-static const float edgeDirection[12][3] = {
-    {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {-1.0, 0.0, 0.0}, {0.0, -1.0, 0.0},
-    {1.0, 0.0, 0.0}, {0.0, 1.0, 0.0}, {-1.0, 0.0, 0.0}, {0.0, -1.0, 0.0},
-    {0.0, 0.0, 1.0}, {0.0, 0.0, 1.0}, { 0.0, 0.0, 1.0}, {0.0,  0.0, 1.0}
-};
-
-// marchCube performs the Marching Cubes algorithm on a single cube
-void ofxMarchingCubes::marchCube(float x, float y, float z, float scale, ofMesh &mesh) {
+void ofxMarchingCubes::marchCube(float x, float y, float z, float scale, ofMesh &mesh) const {
     extern int cubeEdgeFlags[256];
     extern int triangleConnectionTable[256][16];
 
@@ -108,22 +104,22 @@ void ofxMarchingCubes::marchCube(float x, float y, float z, float scale, ofMesh 
 }
 
 // marchingCubes iterates over the entire dataset, calling marchCube on each cube
-void  ofxMarchingCubes::generateMesh(ofMesh &mesh) {
-    for (int x = 0; x < dataSetSize; x++) {
-        for (int y = 0; y < dataSetSize; y++) {
-            for (int z = 0; z < dataSetSize; z++) {
+void  ofxMarchingCubes::generateMesh(ofMesh &mesh) const {
+    for (int x = 0; x < gridSize; x++) {
+        for (int y = 0; y < gridSize; y++) {
+            for (int z = 0; z < gridSize; z++) {
                 marchCube(x*stepSize, y*stepSize, z*stepSize, stepSize, mesh);
             }
         }
     }
 }
 
-// For any edge, if one vertex is inside of the surface and the other is outside of the surface
-//  then the edge intersects the surface
-// For each of the 8 vertices of the cube can be two possible states : either inside or outside of the surface
-// For any cube the are 2^8=256 possible sets of vertex states
-// This table lists the edges intersected by the surface for all 256 possible vertex states
-// There are 12 edges.  For each entry in the table, if edge #n is intersected, then bit #n is set to 1
+/** For any edge, if one vertex is inside of the surface and the other is outside of the surface then the 
+ *  edge intersects the surface. For each of the 8 vertices of the cube can be two possible states: either 
+ *  inside or outside of the surface. For any cube the are 2^8=256 possible sets of vertex states. This table
+ *  lists the edges intersected by the surface for all 256 possible vertex states. There are 12 edges. For
+ *  each entry in the table, if edge #n is intersected, then bit #n is set to 1.
+ */
 int cubeEdgeFlags[256]= {
     0x000, 0x109, 0x203, 0x30a, 0x406, 0x50f, 0x605, 0x70c, 0x80c, 0x905, 0xa0f, 0xb06, 0xc0a, 0xd03, 0xe09, 0xf00, 
     0x190, 0x099, 0x393, 0x29a, 0x596, 0x49f, 0x795, 0x69c, 0x99c, 0x895, 0xb9f, 0xa96, 0xd9a, 0xc93, 0xf99, 0xe90, 
@@ -143,13 +139,11 @@ int cubeEdgeFlags[256]= {
     0xf00, 0xe09, 0xd03, 0xc0a, 0xb06, 0xa0f, 0x905, 0x80c, 0x70c, 0x605, 0x50f, 0x406, 0x30a, 0x203, 0x109, 0x000
 };
 
-//  For each of the possible vertex states listed in cubeEdgeFlags there is a specific triangulation
-//  of the edge intersection points.  triangleConnectionTable lists all of them in the form of
-//  0-5 edge triples with the list terminated by the invalid value -1.
-//  For example: triangleConnectionTable[3] list the 2 triangles formed when corner[0] 
-//  and corner[1] are inside of the surface, but the rest of the cube is not.
-//
-//  I found this table in an example program someone wrote long ago.  It was probably generated by hand
+/** For each of the possible vertex states listed in cubeEdgeFlags there is a specific triangulation of the 
+ *  edge intersection points.  triangleConnectionTable lists all of them in the form of 0-5 edge triples with
+ *  the list terminated by the invalid value -1. For example: triangleConnectionTable[3] list the 2 triangles
+ *  formed when corner[0] and corner[1] are inside of the surface, but the rest of the cube is not.
+ */
 int triangleConnectionTable[256][16] = {
     {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
     {0, 8, 3, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
