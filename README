@@ -1,0 +1,4 @@
+# ofxMarchingCubes
+An openFrameworks addon that implements the marching cubes algorithm.
+
+The code is based on a version by Cory Gene Bloyd.
